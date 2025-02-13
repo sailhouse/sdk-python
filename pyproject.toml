@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sailhouse"
+version = "0.1.0"
+description = "Python SDK for Sailhouse - Event Streaming Platform"
+readme = "README.md"
+authors = [
+    { name = "Ed Stephinson", email = "ed@sailhouse.dev" }
+]
+license = { file = "LICENSE" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["sailhouse", "events", "streaming", "pubsub"]
+dependencies = [
+    "requests>=2.28.0",
+    "websockets>=10.0",
+    "typing-extensions>=4.0.0",
+]
+requires-python = ">=3.8"
+
+[project.urls]
+Homepage = "https://github.com/sailhouse/sdk-python"
+Documentation = "https://docs.sailhouse.dev/"
+Repository = "https://github.com/sailhouse/sdk-python.git"
+"Bug Tracker" = "https://github.com/sailhouse/sdk-python/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sailhouse"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-asyncio",
+    "pytest-cov",
+    "requests-mock",
+]

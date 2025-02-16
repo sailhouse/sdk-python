@@ -143,36 +143,6 @@ class SailhouseClient:
             raise SailhouseError(
                 f"Failed to acknowledge message: {response.status_code}")
 
-    @asynccontextmanager
-    async def stream_events(
-        self,
-        topic: str,
-        subscription: str
-    ):
-        """Stream events using websockets"""
-        uri = "wss://api.sailhouse.dev/events/stream"
-
-        async with websockets.connect(uri) as websocket:
-            await websocket.send(json.dumps({
-                "topic_slug": topic,
-                "subscription_slug": subscription,
-                "token": self.token
-            }))
-
-            while True:
-                try:
-                    message = await websocket.recv()
-                    event_data = json.loads(message)
-                    yield Event(
-                        id=event_data['id'],
-                        data=event_data['data'],
-                        _topic=topic,
-                        _subscription=subscription,
-                        _client=self
-                    )
-                except websockets.exceptions.ConnectionClosed:
-                    break
-
     async def subscribe(
         self,
         topic: str,

@@ -18,17 +18,17 @@ def client():
 @pytest.fixture
 def mock_response():
     class MockResponse:
-        def __init__(self, status_code, json_data):
+        def __init__(self, status_code, json_data=None):
             self.status_code = status_code
             self._json_data = json_data
-            self.text = json.dumps(json_data)
+            self.text = json.dumps(json_data) if json_data else ""
 
         def json(self):
+            if self._json_data is None:
+                raise ValueError("No JSON data available")
             return self._json_data
 
     return MockResponse
-
-# Test Event class
 
 
 def test_event_creation():
@@ -142,40 +142,62 @@ async def test_acknowledge_message_failure(client, mock_response):
 
 
 @pytest.mark.asyncio
-async def test_subscribe_handler_called(client, mock_response):
-    test_events = {
-        "events": [
-            {"id": "1", "data": {"message": "test1"}},
-        ],
-        "offset": 0,
-        "limit": 10
+async def test_pull_success(client, mock_response):
+    test_event = {
+        "id": "1",
+        "data": {"message": "test1"}
     }
 
+    with patch.object(client.session, 'post', return_value=mock_response(200, test_event)):
+        event = await client.pull("test-topic", "test-sub")
+
+        assert isinstance(event, Event)
+        assert event.id == "1"
+        assert event.data == {"message": "test1"}
+        assert event._topic == "test-topic"
+        assert event._subscription == "test-sub"
+
+
+@pytest.mark.asyncio
+async def test_pull_no_message(client, mock_response):
+    with patch.object(client.session, 'post', return_value=mock_response(204)):
+        event = await client.pull("test-topic", "test-sub")
+        assert event is None
+
+
+@pytest.mark.asyncio
+async def test_pull_failure(client, mock_response):
+    with patch.object(client.session, 'post', return_value=mock_response(400, {})):
+        with pytest.raises(SailhouseError):
+            await client.pull("test-topic", "test-sub")
+
+
+@pytest.mark.asyncio
+async def test_subscribe_handler_called(client, mock_response):
     handler = AsyncMock()
 
-    # Set up a mock that will return events once then exit
-    get_events_mock = AsyncMock()
-    get_events_mock.return_value = GetEventsResponse(
-        events=[Event(
+    # Mock pull to return one event and then None
+    pull_mock = AsyncMock()
+    pull_mock.side_effect = [
+        Event(
             id="1",
             data={"message": "test1"},
             _topic="test-topic",
             _subscription="test-sub",
             _client=client
-        )],
-        offset=0,
-        limit=10
-    )
+        ),
+        None
+    ]
 
-    with patch.object(client, 'get_events', get_events_mock):
+    with patch.object(client, 'pull', pull_mock):
         # Create a task for the subscription
         task = asyncio.create_task(
             client.subscribe(
                 "test-topic",
                 "test-sub",
                 handler,
-                polling_interval=0.5,
-                exit_on_error=True  # This will make it exit after first iteration
+                polling_interval=0.1,
+                exit_on_error=True
             )
         )
 
@@ -196,19 +218,19 @@ async def test_subscribe_handler_called(client, mock_response):
 
 @pytest.mark.asyncio
 async def test_subscribe_with_error_handler(client):
-    error_handler = AsyncMock()
+    error_handler = Mock()  # Changed from AsyncMock to Mock since we're not awaiting it
     handler = AsyncMock()
 
     # Create a mock that raises an exception
-    get_events_mock = AsyncMock(side_effect=Exception("Test error"))
+    pull_mock = AsyncMock(side_effect=Exception("Test error"))
 
-    with patch.object(client, 'get_events', get_events_mock):
+    with patch.object(client, 'pull', pull_mock):
         task = asyncio.create_task(
             client.subscribe(
                 "test-topic",
                 "test-sub",
                 handler,
-                polling_interval=0.5,
+                polling_interval=0.1,
                 on_error=error_handler,
                 exit_on_error=True
             )
@@ -227,3 +249,37 @@ async def test_subscribe_with_error_handler(client):
 
         # Verify error handler was called
         error_handler.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_subscribe_continuous_polling(client):
+    handler = AsyncMock()
+
+    # Mock pull to return None (simulating no messages)
+    pull_mock = AsyncMock(return_value=None)
+
+    with patch.object(client, 'pull', pull_mock):
+        task = asyncio.create_task(
+            client.subscribe(
+                "test-topic",
+                "test-sub",
+                handler,
+                polling_interval=0.1
+            )
+        )
+
+        # Wait for a few polling intervals
+        await asyncio.sleep(0.3)
+
+        # Cancel the task
+        task.cancel()
+
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Verify handler was not called (since no messages were returned)
+        handler.assert_not_called()
+        # Verify pull was called multiple times
+        assert pull_mock.call_count > 1

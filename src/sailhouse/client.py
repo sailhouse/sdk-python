@@ -58,6 +58,31 @@ class SailhouseClient:
             "x-source": "sailhouse-python"
         })
 
+    async def pull(
+            self,
+            topic: str,
+            subscription: str,
+    ) -> Event:
+        """Pull an event from a subscription, locking it for processing"""
+        url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events/pull"
+
+        response = self.session.post(url, timeout=self.timeout)
+        if response.status_code == 204:
+            return None
+
+        if response.status_code != 200:
+            raise SailhouseError(
+                f"Failed to pull message: {response.status_code}")
+
+        data = response.json()
+        return Event(
+            id=data['id'],
+            data=data['data'],
+            _topic=topic,
+            _subscription=subscription,
+            _client=self
+        )
+
     async def get_events(
         self,
         topic: str,
@@ -143,6 +168,20 @@ class SailhouseClient:
             raise SailhouseError(
                 f"Failed to acknowledge message: {response.status_code}")
 
+    async def nack_message(
+        self,
+        topic: str,
+        subscription: str,
+        event_id: str
+    ) -> None:
+        """Nacknowledge a message"""
+        url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events/{event_id}/nack"
+
+        response = self.session.post(url, timeout=self.timeout)
+        if response.status_code not in (200, 204):
+            raise SailhouseError(
+                f"Failed to nack message: {response.status_code}")
+
     async def subscribe(
         self,
         topic: str,
@@ -156,9 +195,13 @@ class SailhouseClient:
         """Subscribe to events with polling"""
         while True:
             try:
-                events = await self.get_events(topic, subscription)
-                for event in events.events:
+                event = await self.pull(topic, subscription)
+                if event:
                     await handler(event)
+                    # We want to try and fetch another message immediately
+                    # after processing the current one
+                    continue
+
                 await asyncio.sleep(polling_interval)
             except Exception as e:
                 if on_error:

@@ -148,7 +148,7 @@ async def test_pull_success(client, mock_response):
         "data": {"message": "test1"}
     }
 
-    with patch.object(client.session, 'post', return_value=mock_response(200, test_event)):
+    with patch.object(client.session, 'get', return_value=mock_response(200, test_event)):
         event = await client.pull("test-topic", "test-sub")
 
         assert isinstance(event, Event)
@@ -160,14 +160,14 @@ async def test_pull_success(client, mock_response):
 
 @pytest.mark.asyncio
 async def test_pull_no_message(client, mock_response):
-    with patch.object(client.session, 'post', return_value=mock_response(204)):
+    with patch.object(client.session, 'get', return_value=mock_response(204)):
         event = await client.pull("test-topic", "test-sub")
         assert event is None
 
 
 @pytest.mark.asyncio
 async def test_pull_failure(client, mock_response):
-    with patch.object(client.session, 'post', return_value=mock_response(400, {})):
+    with patch.object(client.session, 'get', return_value=mock_response(400, {})):
         with pytest.raises(SailhouseError):
             await client.pull("test-topic", "test-sub")
 

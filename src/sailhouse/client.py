@@ -66,7 +66,7 @@ class SailhouseClient:
         """Pull an event from a subscription, locking it for processing"""
         url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events/pull"
 
-        response = self.session.post(url, timeout=self.timeout)
+        response = self.session.get(url, timeout=self.timeout)
         if response.status_code == 204:
             return None
 

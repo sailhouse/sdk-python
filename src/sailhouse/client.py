@@ -19,6 +19,7 @@ class Event(Generic[T]):
     _topic: str
     _subscription: str
     _client: 'SailhouseClient'
+    metadata: Optional[Dict[str, Any]] = None
 
     def as_type(self, cls: type[T]) -> T:
         """Convert event data to specified type"""
@@ -80,7 +81,8 @@ class SailhouseClient:
             data=data['data'],
             _topic=topic,
             _subscription=subscription,
-            _client=self
+            _client=self,
+            metadata=data.get('metadata')
         )
 
     async def get_events(
@@ -115,7 +117,8 @@ class SailhouseClient:
                 data=e['data'],
                 _topic=topic,
                 _subscription=subscription,
-                _client=self
+                _client=self,
+                metadata=e.get('metadata')
             )
             for e in data['events']
         ]

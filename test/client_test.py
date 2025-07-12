@@ -43,6 +43,24 @@ def test_event_creation():
 
     assert event.id == "test-id"
     assert event.data == {"message": "test"}
+    assert event.metadata is None
+
+
+def test_event_creation_with_metadata():
+    client = SailhouseClient(token="test-token")
+    metadata = {"source": "api", "version": "1.0"}
+    event = Event(
+        id="test-id",
+        data={"message": "test"},
+        _topic="test-topic",
+        _subscription="test-sub",
+        _client=client,
+        metadata=metadata
+    )
+
+    assert event.id == "test-id"
+    assert event.data == {"message": "test"}
+    assert event.metadata == metadata
 
 
 def test_event_as_type():
@@ -95,6 +113,27 @@ async def test_get_events_success(client, mock_response):
         assert response.limit == 10
         assert isinstance(response.events[0], Event)
         assert response.events[0].data["message"] == "test1"
+        assert response.events[0].metadata is None
+
+
+@pytest.mark.asyncio
+async def test_get_events_with_metadata(client, mock_response):
+    test_events = {
+        "events": [
+            {"id": "1", "data": {"message": "test1"}, "metadata": {"source": "api"}},
+            {"id": "2", "data": {"message": "test2"}, "metadata": {"source": "webhook"}}
+        ],
+        "offset": 0,
+        "limit": 10
+    }
+
+    with patch.object(client.session, 'get', return_value=mock_response(200, test_events)):
+        response = await client.get_events("test-topic", "test-sub")
+
+        assert isinstance(response, GetEventsResponse)
+        assert len(response.events) == 2
+        assert response.events[0].metadata == {"source": "api"}
+        assert response.events[1].metadata == {"source": "webhook"}
 
 
 @pytest.mark.asyncio
@@ -156,6 +195,24 @@ async def test_pull_success(client, mock_response):
         assert event.data == {"message": "test1"}
         assert event._topic == "test-topic"
         assert event._subscription == "test-sub"
+        assert event.metadata is None
+
+
+@pytest.mark.asyncio
+async def test_pull_success_with_metadata(client, mock_response):
+    test_event = {
+        "id": "1",
+        "data": {"message": "test1"},
+        "metadata": {"source": "api", "version": "1.0"}
+    }
+
+    with patch.object(client.session, 'get', return_value=mock_response(200, test_event)):
+        event = await client.pull("test-topic", "test-sub")
+
+        assert isinstance(event, Event)
+        assert event.id == "1"
+        assert event.data == {"message": "test1"}
+        assert event.metadata == {"source": "api", "version": "1.0"}
 
 
 @pytest.mark.asyncio

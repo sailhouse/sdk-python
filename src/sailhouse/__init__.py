@@ -13,7 +13,7 @@ from .push_subscriptions import (
     verify_push_subscription_signature_safe
 )
 
-__version__ = "0.1.0"
+__version__ = "1.5.0"
 
 __all__ = [
     "SailhouseClient",

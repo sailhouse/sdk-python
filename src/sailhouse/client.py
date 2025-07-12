@@ -98,7 +98,7 @@ class SailhouseClient:
             subscription: str,
     ) -> Event:
         """Pull an event from a subscription, locking it for processing"""
-        url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events/pull"
+        url = f"{self.base_url}/topics/{topic}/subscriptions/{subscription}/events/pull"
 
         response = self.session.get(url, timeout=self.timeout)
         if response.status_code == 204:
@@ -136,7 +136,7 @@ class SailhouseClient:
         if time_window is not None:
             params['time_window'] = time_window
 
-        url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events"
+        url = f"{self.base_url}/topics/{topic}/subscriptions/{subscription}/events"
 
         response = self.session.get(url, params=params, timeout=self.timeout)
         if response.status_code != 200:
@@ -197,7 +197,7 @@ class SailhouseClient:
         wait_group_instance_id: Optional[str] = None
     ) -> None:
         """Publish an event to a topic"""
-        url = f"{self.BASE_URL}/topics/{topic}/events"
+        url = f"{self.base_url}/topics/{topic}/events"
 
         body = {"data": data}
         if scheduled_time:
@@ -225,7 +225,7 @@ class SailhouseClient:
         event_id: str
     ) -> None:
         """Acknowledge a message"""
-        url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events/{event_id}"
+        url = f"{self.base_url}/topics/{topic}/subscriptions/{subscription}/events/{event_id}"
 
         response = self.session.post(url, timeout=self.timeout)
         if response.status_code not in (200, 204):
@@ -239,7 +239,7 @@ class SailhouseClient:
         event_id: str
     ) -> None:
         """Nacknowledge a message"""
-        url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events/{event_id}/nack"
+        url = f"{self.base_url}/topics/{topic}/subscriptions/{subscription}/events/{event_id}/nack"
 
         response = self.session.post(url, timeout=self.timeout)
         if response.status_code not in (200, 204):

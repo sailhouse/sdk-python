@@ -278,3 +278,47 @@ class SailhouseClient:
         """Create a SailhouseSubscriber for long-running event processing"""
         from .subscriber import SailhouseSubscriber, SubscriberOptions
         return SailhouseSubscriber(self, options)
+    
+    def verify_push_subscription(
+        self,
+        webhook_secret: str,
+        signature_header: str,
+        raw_body,
+        tolerance: int = 300
+    ) -> bool:
+        """Verify push subscription webhook signature"""
+        from .push_subscriptions import (
+            PushSubscriptionVerifier, 
+            PushSubscriptionHeaders, 
+            PushSubscriptionPayload,
+            VerificationOptions
+        )
+        
+        verifier = PushSubscriptionVerifier(webhook_secret)
+        headers = PushSubscriptionHeaders(signature=signature_header)
+        payload = PushSubscriptionPayload(raw_body=raw_body)
+        options = VerificationOptions(tolerance=tolerance)
+        
+        return verifier.verify(headers, payload, options)
+    
+    def verify_push_subscription_safe(
+        self,
+        webhook_secret: str,
+        signature_header: str,
+        raw_body,
+        tolerance: int = 300
+    ) -> bool:
+        """Safe push subscription verification - returns boolean instead of raising"""
+        from .push_subscriptions import (
+            PushSubscriptionVerifier,
+            PushSubscriptionHeaders,
+            PushSubscriptionPayload,
+            VerificationOptions
+        )
+        
+        verifier = PushSubscriptionVerifier(webhook_secret)
+        headers = PushSubscriptionHeaders(signature=signature_header)
+        payload = PushSubscriptionPayload(raw_body=raw_body)
+        options = VerificationOptions(tolerance=tolerance)
+        
+        return verifier.verify_safe(headers, payload, options)

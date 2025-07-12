@@ -273,3 +273,8 @@ class SailhouseClient:
                 if exit_on_error:
                     break
                 continue
+
+    def subscriber(self, options=None):
+        """Create a SailhouseSubscriber for long-running event processing"""
+        from .subscriber import SailhouseSubscriber, SubscriberOptions
+        return SailhouseSubscriber(self, options)

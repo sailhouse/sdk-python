@@ -1,5 +1,6 @@
 from .client import SailhouseClient, GetEventsResponse, Event
 from .exceptions import SailhouseError
+from .admin import AdminClient, FilterCondition, ComplexFilter, Filter, RegisterResult
 
 __version__ = "0.1.0"
 
@@ -8,4 +9,9 @@ __all__ = [
     "Event",
     "GetEventsResponse",
     "SailhouseError",
+    "AdminClient",
+    "FilterCondition",
+    "ComplexFilter",
+    "Filter",
+    "RegisterResult",
 ]

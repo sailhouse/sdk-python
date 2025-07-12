@@ -58,6 +58,10 @@ class SailhouseClient:
             "Authorization": token,
             "x-source": "sailhouse-python"
         })
+        
+        # Import here to avoid circular import
+        from .admin import AdminClient
+        self.admin = AdminClient(self)
 
     async def pull(
             self,

@@ -8,8 +8,37 @@ import requests
 import websockets
 import asyncio
 import json
+import uuid
 
 T = TypeVar('T')
+
+
+@dataclass
+class WaitOptions:
+    ttl: Optional[int] = None  # TTL in seconds
+
+
+@dataclass 
+class WaitGroup:
+    instance_id: str
+    client: 'SailhouseClient'
+    
+    async def publish(
+        self,
+        topic: str, 
+        data: Dict[str, Any],
+        *,
+        scheduled_time: Optional[datetime] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Publish an event under this waitgroup"""
+        await self.client.publish(
+            topic=topic,
+            data=data,
+            scheduled_time=scheduled_time,
+            metadata=metadata,
+            wait_group_instance_id=self.instance_id
+        )
 
 
 @dataclass
@@ -133,13 +162,39 @@ class SailhouseClient:
             limit=data.get('limit', 0)
         )
 
+    def wait(self, options: Optional[WaitOptions] = None) -> WaitGroup:
+        """Create a waitgroup for coordinated event publishing"""
+        instance_id = str(uuid.uuid4())
+        
+        if options and options.ttl:
+            # Create waitgroup with TTL
+            url = f"{self.base_url}/waitgroups"
+            body = {
+                "instance_id": instance_id,
+                "ttl": options.ttl
+            }
+            
+            response = self.session.post(
+                url,
+                json=body,
+                timeout=self.timeout
+            )
+            
+            if response.status_code not in (200, 201):
+                raise SailhouseError(
+                    f"Failed to create waitgroup: {response.status_code} - {response.text}"
+                )
+        
+        return WaitGroup(instance_id=instance_id, client=self)
+
     async def publish(
         self,
         topic: str,
         data: Dict[str, Any],
         *,
         scheduled_time: Optional[datetime] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        wait_group_instance_id: Optional[str] = None
     ) -> None:
         """Publish an event to a topic"""
         url = f"{self.BASE_URL}/topics/{topic}/events"
@@ -149,6 +204,8 @@ class SailhouseClient:
             body["send_at"] = scheduled_time.isoformat()
         if metadata:
             body["metadata"] = metadata
+        if wait_group_instance_id:
+            body["wait_group_instance_id"] = wait_group_instance_id
 
         response = self.session.post(
             url,

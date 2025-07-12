@@ -1,4 +1,4 @@
-from .client import SailhouseClient, GetEventsResponse, Event
+from .client import SailhouseClient, GetEventsResponse, Event, WaitOptions, WaitGroup
 from .exceptions import SailhouseError
 from .admin import AdminClient, FilterCondition, ComplexFilter, Filter, RegisterResult
 
@@ -14,4 +14,6 @@ __all__ = [
     "ComplexFilter",
     "Filter",
     "RegisterResult",
+    "WaitOptions",
+    "WaitGroup",
 ]

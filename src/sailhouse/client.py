@@ -8,8 +8,37 @@ import requests
 import websockets
 import asyncio
 import json
+import uuid
 
 T = TypeVar('T')
+
+
+@dataclass
+class WaitOptions:
+    ttl: Optional[int] = None  # TTL in seconds
+
+
+@dataclass 
+class WaitGroup:
+    instance_id: str
+    client: 'SailhouseClient'
+    
+    async def publish(
+        self,
+        topic: str, 
+        data: Dict[str, Any],
+        *,
+        scheduled_time: Optional[datetime] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Publish an event under this waitgroup"""
+        await self.client.publish(
+            topic=topic,
+            data=data,
+            scheduled_time=scheduled_time,
+            metadata=metadata,
+            wait_group_instance_id=self.instance_id
+        )
 
 
 @dataclass
@@ -19,6 +48,7 @@ class Event(Generic[T]):
     _topic: str
     _subscription: str
     _client: 'SailhouseClient'
+    metadata: Optional[Dict[str, Any]] = None
 
     def as_type(self, cls: type[T]) -> T:
         """Convert event data to specified type"""
@@ -57,6 +87,10 @@ class SailhouseClient:
             "Authorization": token,
             "x-source": "sailhouse-python"
         })
+        
+        # Import here to avoid circular import
+        from .admin import AdminClient
+        self.admin = AdminClient(self)
 
     async def pull(
             self,
@@ -64,7 +98,7 @@ class SailhouseClient:
             subscription: str,
     ) -> Event:
         """Pull an event from a subscription, locking it for processing"""
-        url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events/pull"
+        url = f"{self.base_url}/topics/{topic}/subscriptions/{subscription}/events/pull"
 
         response = self.session.get(url, timeout=self.timeout)
         if response.status_code == 204:
@@ -80,7 +114,8 @@ class SailhouseClient:
             data=data['data'],
             _topic=topic,
             _subscription=subscription,
-            _client=self
+            _client=self,
+            metadata=data.get('metadata')
         )
 
     async def get_events(
@@ -101,7 +136,7 @@ class SailhouseClient:
         if time_window is not None:
             params['time_window'] = time_window
 
-        url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events"
+        url = f"{self.base_url}/topics/{topic}/subscriptions/{subscription}/events"
 
         response = self.session.get(url, params=params, timeout=self.timeout)
         if response.status_code != 200:
@@ -115,7 +150,8 @@ class SailhouseClient:
                 data=e['data'],
                 _topic=topic,
                 _subscription=subscription,
-                _client=self
+                _client=self,
+                metadata=e.get('metadata')
             )
             for e in data['events']
         ]
@@ -126,22 +162,50 @@ class SailhouseClient:
             limit=data.get('limit', 0)
         )
 
+    def wait(self, options: Optional[WaitOptions] = None) -> WaitGroup:
+        """Create a waitgroup for coordinated event publishing"""
+        instance_id = str(uuid.uuid4())
+        
+        if options and options.ttl:
+            # Create waitgroup with TTL
+            url = f"{self.base_url}/waitgroups"
+            body = {
+                "instance_id": instance_id,
+                "ttl": options.ttl
+            }
+            
+            response = self.session.post(
+                url,
+                json=body,
+                timeout=self.timeout
+            )
+            
+            if response.status_code not in (200, 201):
+                raise SailhouseError(
+                    f"Failed to create waitgroup: {response.status_code} - {response.text}"
+                )
+        
+        return WaitGroup(instance_id=instance_id, client=self)
+
     async def publish(
         self,
         topic: str,
         data: Dict[str, Any],
         *,
         scheduled_time: Optional[datetime] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        wait_group_instance_id: Optional[str] = None
     ) -> None:
         """Publish an event to a topic"""
-        url = f"{self.BASE_URL}/topics/{topic}/events"
+        url = f"{self.base_url}/topics/{topic}/events"
 
         body = {"data": data}
         if scheduled_time:
             body["send_at"] = scheduled_time.isoformat()
         if metadata:
             body["metadata"] = metadata
+        if wait_group_instance_id:
+            body["wait_group_instance_id"] = wait_group_instance_id
 
         response = self.session.post(
             url,
@@ -161,7 +225,7 @@ class SailhouseClient:
         event_id: str
     ) -> None:
         """Acknowledge a message"""
-        url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events/{event_id}"
+        url = f"{self.base_url}/topics/{topic}/subscriptions/{subscription}/events/{event_id}"
 
         response = self.session.post(url, timeout=self.timeout)
         if response.status_code not in (200, 204):
@@ -175,7 +239,7 @@ class SailhouseClient:
         event_id: str
     ) -> None:
         """Nacknowledge a message"""
-        url = f"{self.BASE_URL}/topics/{topic}/subscriptions/{subscription}/events/{event_id}/nack"
+        url = f"{self.base_url}/topics/{topic}/subscriptions/{subscription}/events/{event_id}/nack"
 
         response = self.session.post(url, timeout=self.timeout)
         if response.status_code not in (200, 204):
@@ -209,3 +273,52 @@ class SailhouseClient:
                 if exit_on_error:
                     break
                 continue
+
+    def subscriber(self, options=None):
+        """Create a SailhouseSubscriber for long-running event processing"""
+        from .subscriber import SailhouseSubscriber, SubscriberOptions
+        return SailhouseSubscriber(self, options)
+    
+    def verify_push_subscription(
+        self,
+        webhook_secret: str,
+        signature_header: str,
+        raw_body,
+        tolerance: int = 300
+    ) -> bool:
+        """Verify push subscription webhook signature"""
+        from .push_subscriptions import (
+            PushSubscriptionVerifier, 
+            PushSubscriptionHeaders, 
+            PushSubscriptionPayload,
+            VerificationOptions
+        )
+        
+        verifier = PushSubscriptionVerifier(webhook_secret)
+        headers = PushSubscriptionHeaders(signature=signature_header)
+        payload = PushSubscriptionPayload(raw_body=raw_body)
+        options = VerificationOptions(tolerance=tolerance)
+        
+        return verifier.verify(headers, payload, options)
+    
+    def verify_push_subscription_safe(
+        self,
+        webhook_secret: str,
+        signature_header: str,
+        raw_body,
+        tolerance: int = 300
+    ) -> bool:
+        """Safe push subscription verification - returns boolean instead of raising"""
+        from .push_subscriptions import (
+            PushSubscriptionVerifier,
+            PushSubscriptionHeaders,
+            PushSubscriptionPayload,
+            VerificationOptions
+        )
+        
+        verifier = PushSubscriptionVerifier(webhook_secret)
+        headers = PushSubscriptionHeaders(signature=signature_header)
+        payload = PushSubscriptionPayload(raw_body=raw_body)
+        options = VerificationOptions(tolerance=tolerance)
+        
+        return verifier.verify_safe(headers, payload, options)
